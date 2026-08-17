@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Codex Subscription Router</title>
+    <link rel="stylesheet" href="/manager/assets/manager.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Windows preview</p>
+          <h1>Subscription Router</h1>
+          <p class="subtitle">One Codex workspace, balanced across your connected subscriptions.</p>
+        </div>
+        <div class="connection" id="connection"><span></span> Connecting</div>
+      </header>
+
+      <section class="summary" aria-label="Pool summary">
+        <div><strong id="connected-count">—</strong><span>Connected</span></div>
+        <div><strong id="enabled-count">—</strong><span>Enabled</span></div>
+        <div><strong id="thread-count">—</strong><span>Assigned threads</span></div>
+      </section>
+
+      <section class="toolbar">
+        <div>
+          <h2>Subscriptions</h2>
+          <p>New threads use an enabled account with available capacity. Existing threads stay with their owner.</p>
+        </div>
+        <button class="primary" id="add-account">Add subscription</button>
+      </section>
+
+      <div class="notice hidden" id="notice" role="status"></div>
+      <section class="accounts" id="accounts" aria-live="polite">
+        <div class="empty">Loading subscriptions…</div>
+      </section>
+
+      <footer>
+        <span>Credentials remain in each account’s private Codex home.</span>
+        <button class="text-button" id="refresh">Refresh</button>
+      </footer>
+    </main>
+
+    <dialog id="login-dialog">
+      <form method="dialog" class="dialog-card">
+        <button class="dialog-close" value="cancel" aria-label="Close">×</button>
+        <p class="eyebrow">Device code sign-in</p>
+        <h2>Connect subscription</h2>
+        <p>Open the verification page, sign in to the subscription you want to add, then enter this code.</p>
+        <button type="button" class="device-code" id="device-code" title="Copy code">—</button>
+        <div class="dialog-actions">
+          <button type="button" class="primary" id="open-verification">Open verification page</button>
+          <button type="button" class="secondary" id="copy-code">Copy code</button>
+        </div>
+        <p class="login-status" id="login-status">Waiting for sign-in…</p>
+      </form>
+    </dialog>
+
+    <script src="/manager/assets/manager.js"></script>
+  </body>
+</html>

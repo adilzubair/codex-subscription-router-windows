@@ -1,0 +1,49 @@
+name: Windows CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: '1.26.x'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '22.12'
+          cache: npm
+
+      - name: Install pinned JavaScript dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Test and lint
+        run: npm run check
+
+      - name: Build Windows payload
+        shell: powershell
+        run: .\scripts\windows\build-windows.ps1
+
+      - name: Reject proprietary or private artifacts
+        shell: powershell
+        run: |
+          $forbidden = Get-ChildItem -Recurse -File | Where-Object {
+            $_.Extension -in @('.asar', '.msix', '.appx', '.appxbundle', '.msixbundle') -or
+            $_.Name -in @('ChatGPT.exe', 'codex.real.exe', 'control-token', 'auth.json', 'credentials.json')
+          }
+          if ($forbidden) {
+            $forbidden.FullName | Write-Error
+            exit 1
+          }
