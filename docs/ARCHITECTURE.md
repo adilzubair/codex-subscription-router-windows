@@ -19,6 +19,12 @@ uses for the bundled Codex CLI. The multiplexer owns a private Codex child for
 each connected subscription, chooses an eligible account for new threads, and
 records thread ownership so later requests stay with the same account.
 
+The persistent routing preference is either `automatic` or a manually selected
+account ID. Manual mode gives that account priority for new threads. If it is
+disconnected, disabled, excluded after a usage-limit response, or out of weekly
+capacity, normal automatic selection continues as a safe fallback. The preference
+does not rewrite ownership for existing threads.
+
 ## Isolated desktop runtime
 
 The launcher locates the newest `OpenAI.Codex` MSIX package, verifies the
@@ -34,6 +40,7 @@ mode skips ASAR patching and exposes account management in the local browser UI.
 ## Local state and security boundaries
 
 - Router state lives in `%USERPROFILE%\.codex-mux`.
+- The automatic/manual routing preference is stored with routing metadata, not credentials.
 - Each subscription gets a separate private Codex home and credential store.
 - The manager binds to loopback only and requires a random 256-bit bearer token.
 - The launcher applies SID-based Windows ACLs to the state directory and token.

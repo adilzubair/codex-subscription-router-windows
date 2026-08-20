@@ -56,6 +56,7 @@ function CodexMuxWindowsAccountAvatar({ imageUrl, label }) {
 
 function CodexMuxWindowsAccountMenu() {
   const [accounts, setAccounts] = fcl.useState([]);
+  const [routing, setRouting] = fcl.useState({ mode: "automatic", accountId: "" });
   const [loading, setLoading] = fcl.useState(true);
   const [busy, setBusy] = fcl.useState(false);
   const [error, setError] = fcl.useState("");
@@ -67,6 +68,7 @@ function CodexMuxWindowsAccountMenu() {
     try {
       const result = await codexMuxWindowsRequest("/accounts");
       setAccounts(result.accounts || []);
+      setRouting(result.routing || { mode: "automatic", accountId: "" });
       setError("");
     } catch (requestError) {
       setError(requestError.message);
@@ -83,8 +85,8 @@ function CodexMuxWindowsAccountMenu() {
     events.onmessage = (event) => {
       try {
         const payload = JSON.parse(event.data);
-        if (payload.type !== "account-updated") return;
-        if (payload.accountId === loginAccountId) {
+        if (payload.type !== "account-updated" && payload.type !== "routing-updated") return;
+        if (payload.type === "account-updated" && payload.accountId === loginAccountId) {
           codexMuxWindowsLoginActive = false;
           setLogin(null);
         }
@@ -173,15 +175,83 @@ function CodexMuxWindowsAccountMenu() {
     }
   }
 
-  const rows = connected.map((account) => {
+  async function selectRouting(event, accountId) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (busy) return;
+    const currentID = routing.mode === "manual" ? routing.accountId || "" : "";
+    if (currentID === accountId) return;
+    setBusy(true);
+    setError("");
+    try {
+      const result = await codexMuxWindowsRequest("/routing", {
+        method: "PATCH",
+        body: JSON.stringify({ accountId }),
+      });
+      setRouting(result.routing || { mode: "automatic", accountId: "" });
+      await refresh();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const rows = [
+    (0, e7.jsxs)(
+      "button",
+      {
+        type: "button",
+        disabled: busy,
+        className:
+          "mx-1 flex items-center gap-2 rounded-lg px-2 py-2 text-left text-sm hover:bg-token-foreground/5 disabled:opacity-50",
+        onClick: (event) => selectRouting(event, ""),
+        children: [
+          (0, e7.jsx)("span", {
+            className:
+              "flex size-7 shrink-0 items-center justify-center rounded-full bg-token-foreground/10",
+            children:
+              routing.mode !== "manual"
+                ? (0, e7.jsx)(CodexMuxWindowsCheckIcon, { className: "size-4" })
+                : (0, e7.jsx)(CodexMuxWindowsAutoIcon, { className: "size-4" }),
+          }),
+          (0, e7.jsxs)("span", {
+            className: "flex min-w-0 flex-1 flex-col",
+            children: [
+              (0, e7.jsx)("span", { children: "Automatic routing" }),
+              (0, e7.jsx)("span", {
+                className: "text-xs text-codex-description",
+                children: "Balance new chats by capacity",
+              }),
+            ],
+          }),
+          routing.mode !== "manual"
+            ? (0, e7.jsx)("span", {
+                className: "text-xs text-codex-description",
+                children: "Selected",
+              })
+            : null,
+        ],
+      },
+      "codex-mux-windows-automatic",
+    ),
+    (0, e7.jsx)(yH.Separator, {}, "codex-mux-windows-routing-separator"),
+  ];
+
+  rows.push(...connected.map((account) => {
     const weekly = codexMuxWindowsWeeklyWindow(account.rateLimits);
     const remaining = weekly == null
       ? null
       : Math.max(0, 100 - Number(weekly.usedPercent || 0));
+    const selected = routing.mode === "manual" && routing.accountId === account.id;
     return (0, e7.jsxs)(
-      "div",
+      "button",
       {
-        className: "flex min-w-0 items-center gap-2 px-3 py-2",
+        type: "button",
+        disabled: busy,
+        className:
+          "flex min-w-0 items-center gap-2 rounded-lg px-3 py-2 text-left hover:bg-token-foreground/5 disabled:opacity-50",
+        onClick: (event) => selectRouting(event, account.id),
         children: [
           (0, e7.jsx)(CodexMuxWindowsAccountAvatar, {
             imageUrl: account.profileImageUrl,
@@ -202,15 +272,20 @@ function CodexMuxWindowsAccountMenu() {
               }),
             ],
           }),
-          (0, e7.jsx)("span", {
-            className: "shrink-0 text-xs text-codex-description tabular-nums",
-            children: remaining == null ? "–" : `${Math.round(remaining)}% left`,
+          (0, e7.jsxs)("span", {
+            className: "flex shrink-0 items-center gap-1.5 text-xs text-codex-description tabular-nums",
+            children: [
+              remaining == null ? "–" : `${Math.round(remaining)}% left`,
+              selected
+                ? (0, e7.jsx)(CodexMuxWindowsCheckIcon, { className: "size-4" })
+                : null,
+            ],
           }),
         ],
       },
       `codex-mux-windows-${account.id}`,
     );
-  });
+  }));
 
   if (loading) {
     rows.push(
@@ -328,6 +403,48 @@ function CodexMuxWindowsCopyIcon(props) {
           stroke: "currentColor",
           strokeWidth: 1.5,
           strokeLinecap: "round",
+        }),
+      ],
+    }),
+  });
+}
+
+function CodexMuxWindowsCheckIcon(props) {
+  return (0, e7.jsx)("svg", {
+    viewBox: "0 0 20 20",
+    fill: "none",
+    "aria-hidden": true,
+    ...props,
+    children: (0, e7.jsx)("path", {
+      d: "m5 10.25 3.1 3.1L15.25 6.5",
+      stroke: "currentColor",
+      strokeWidth: 1.7,
+      strokeLinecap: "round",
+      strokeLinejoin: "round",
+    }),
+  });
+}
+
+function CodexMuxWindowsAutoIcon(props) {
+  return (0, e7.jsx)("svg", {
+    viewBox: "0 0 20 20",
+    fill: "none",
+    "aria-hidden": true,
+    ...props,
+    children: (0, e7.jsxs)(e7.Fragment, {
+      children: [
+        (0, e7.jsx)("path", {
+          d: "M4.5 6.5h5.25a3.75 3.75 0 0 1 3.75 3.75v3.25",
+          stroke: "currentColor",
+          strokeWidth: 1.5,
+          strokeLinecap: "round",
+        }),
+        (0, e7.jsx)("path", {
+          d: "m11.25 11.25 2.25 2.25 2.25-2.25M4.5 13.5h2.25",
+          stroke: "currentColor",
+          strokeWidth: 1.5,
+          strokeLinecap: "round",
+          strokeLinejoin: "round",
         }),
       ],
     }),

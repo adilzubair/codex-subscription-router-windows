@@ -187,12 +187,23 @@ function Sync-DesktopRuntime {
 
     $sourceHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $sourceAsar).Hash.ToLowerInvariant()
     $tokenHash = ''
+    $patchPayloadHash = ''
+    $patcherRoot = Join-Path $PSScriptRoot 'renderer-patcher'
+    $patcher = Join-Path $patcherRoot 'patch-windows-runtime.mjs'
+    $component = Join-Path $patcherRoot 'windows-account-menu.js'
     if ($UseNativeMenu) {
+        if (-not (Test-Path -LiteralPath $patcher) -or -not (Test-Path -LiteralPath $component)) {
+            throw 'The native-menu patcher payload is incomplete. Re-run build-windows.ps1.'
+        }
         $tokenHash = (Get-FileHash -Algorithm SHA256 -InputStream ([System.IO.MemoryStream]::new([System.Text.Encoding]::UTF8.GetBytes($ControlToken)))).Hash.ToLowerInvariant()
+        $patcherHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $patcher).Hash.ToLowerInvariant()
+        $componentHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $component).Hash.ToLowerInvariant()
+        $payloadBytes = [System.Text.Encoding]::UTF8.GetBytes("$patcherHash`:$componentHash")
+        $patchPayloadHash = (Get-FileHash -Algorithm SHA256 -InputStream ([System.IO.MemoryStream]::new($payloadBytes))).Hash.ToLowerInvariant()
     }
     $packageName = [System.IO.Path]::GetFileName($PackagePath)
     $runtimeBase = Join-Path $env:LOCALAPPDATA 'Codex Subscription Router Runtime'
-    $runtimeVariant = if ($UseNativeMenu) { "owl-router-native-v1-$ControlPort-$($tokenHash.Substring(0, 12))" } else { 'owl-router-v1' }
+    $runtimeVariant = if ($UseNativeMenu) { "owl-router-native-v2-$ControlPort-$($tokenHash.Substring(0, 12))-$($patchPayloadHash.Substring(0, 12))" } else { 'owl-router-v1' }
     $runtimePath = Join-Path $runtimeBase "$packageName-$($sourceHash.Substring(0, 12))-$runtimeVariant"
     $runtimeAsar = Join-Path $runtimePath 'resources\app.asar'
     if (Test-Path -LiteralPath $runtimeAsar) {
@@ -204,6 +215,7 @@ function Sync-DesktopRuntime {
                 if ($metadata.sourceHash -eq $sourceHash -and
                     $metadata.patchedHash -eq $runtimeHash -and
                     $metadata.tokenHash -eq $tokenHash -and
+                    $metadata.patchPayloadHash -eq $patchPayloadHash -and
                     [int]$metadata.controlPort -eq $ControlPort) {
                     Set-RouterOwlProfile -RuntimePath $runtimePath -ProfileName $ProfileName
                     return $runtimePath
@@ -246,9 +258,6 @@ function Sync-DesktopRuntime {
             throw 'The isolated ChatGPT executable does not have a valid OpenAI signature.'
         }
         if ($UseNativeMenu) {
-            $patcherRoot = Join-Path $PSScriptRoot 'renderer-patcher'
-            $patcher = Join-Path $patcherRoot 'patch-windows-runtime.mjs'
-            $component = Join-Path $patcherRoot 'windows-account-menu.js'
             $node = Join-Path $stagingPath 'resources\cua_node\bin\node.exe'
             if (-not (Test-Path -LiteralPath $patcher) -or
                 -not (Test-Path -LiteralPath $component) -or
@@ -268,6 +277,7 @@ function Sync-DesktopRuntime {
                 sourceHash = $sourceHash
                 patchedHash = $stagedHash
                 tokenHash = $tokenHash
+                patchPayloadHash = $patchPayloadHash
                 controlPort = $ControlPort
             } | ConvertTo-Json
             [System.IO.File]::WriteAllText(

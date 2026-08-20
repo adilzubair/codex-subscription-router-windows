@@ -16,6 +16,10 @@ function replaceOnce(text, anchor, replacement, label) {
   return text.replace(anchor, replacement);
 }
 
+function occurrenceCount(text, anchor) {
+  return text.split(anchor).length - 1;
+}
+
 function listFiles(root) {
   const files = [];
   if (!fs.existsSync(root)) return files;
@@ -105,22 +109,62 @@ try {
   }
 
   let bundle = fs.readFileSync(bundlePath, "utf8");
+  const layouts = [
+    {
+      name: "26.810",
+      componentAnchor: "function ncl(e)",
+      usageAnchor: "usageItems:wt",
+      usageReplacement: "usageItems:(0,e7.jsx)(CodexMuxWindowsAccountMenu,{})",
+      openAnchor: "onOpenChange:l,children:P",
+      openReplacement:
+        "onOpenChange:CodexMuxWindowsProfileMenuOpenChange(l),children:P",
+    },
+    {
+      name: "26.814",
+      componentAnchor: "function HFl(e)",
+      usageAnchor: "usageItems:Ct,workspaceSettingsRightIcon:N",
+      usageReplacement:
+        "usageItems:(0,d7.jsx)(CodexMuxWindowsAccountMenu,{}),workspaceSettingsRightIcon:N",
+      openAnchor: "onOpenChange:l,children:P",
+      openReplacement:
+        "onOpenChange:CodexMuxWindowsProfileMenuOpenChange(l),children:P",
+      symbols: { react: "QFl", jsx: "d7", menu: "hI" },
+    },
+  ];
+  const matchingLayouts = layouts.filter(
+    (layout) =>
+      occurrenceCount(bundle, layout.componentAnchor) === 1 &&
+      occurrenceCount(bundle, layout.usageAnchor) === 1 &&
+      occurrenceCount(bundle, layout.openAnchor) === 1,
+  );
+  if (matchingLayouts.length !== 1) {
+    throw new Error(
+      `expected one supported profile-menu layout, found ${matchingLayouts.length}`,
+    );
+  }
+  const layout = matchingLayouts[0];
+  if (layout.symbols) {
+    component = component
+      .replaceAll("fcl.", `${layout.symbols.react}.`)
+      .replaceAll("e7.", `${layout.symbols.jsx}.`)
+      .replaceAll("yH.", `${layout.symbols.menu}.`);
+  }
   bundle = replaceOnce(
     bundle,
-    "function ncl(e)",
-    `${component}\nfunction ncl(e)`,
+    layout.componentAnchor,
+    `${component}\n${layout.componentAnchor}`,
     "profile menu component",
   );
   bundle = replaceOnce(
     bundle,
-    "usageItems:wt",
-    "usageItems:(0,e7.jsx)(CodexMuxWindowsAccountMenu,{})",
+    layout.usageAnchor,
+    layout.usageReplacement,
     "profile usage slot",
   );
   bundle = replaceOnce(
     bundle,
-    "onOpenChange:l,children:P",
-    "onOpenChange:CodexMuxWindowsProfileMenuOpenChange(l),children:P",
+    layout.openAnchor,
+    layout.openReplacement,
     "profile menu open handler",
   );
   fs.writeFileSync(bundlePath, bundle, "utf8");
@@ -153,7 +197,9 @@ try {
   fs.copyFileSync(outputAsar, asarPath);
   fs.cpSync(outputUnpacked, originalUnpacked, { recursive: true, force: true });
   const patchedHash = createHash("sha256").update(fs.readFileSync(asarPath)).digest("hex");
-  process.stdout.write(`Patched Windows native menu (${patchedHash.slice(0, 12)}).\n`);
+  process.stdout.write(
+    `Patched Windows native menu for layout ${layout.name} (${patchedHash.slice(0, 12)}).\n`,
+  );
 } finally {
   if (fs.existsSync(temporaryRoot)) {
     fs.rmSync(temporaryRoot, { recursive: true, force: true });

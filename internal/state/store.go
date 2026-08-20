@@ -28,20 +28,22 @@ type Account struct {
 }
 
 type persistedState struct {
-	Version     int               `json:"version"`
-	Accounts    []Account         `json:"accounts"`
-	ThreadOwner map[string]string `json:"threadOwner"`
+	Version            int               `json:"version"`
+	Accounts           []Account         `json:"accounts"`
+	ThreadOwner        map[string]string `json:"threadOwner"`
+	PreferredAccountID string            `json:"preferredAccountId,omitempty"`
 }
 
 // Store persists only routing metadata. OAuth credentials and conversation
 // databases remain inside each account's isolated Codex home.
 type Store struct {
-	mu               sync.RWMutex
-	root             string
-	path             string
-	primaryCodexHome string
-	accounts         []Account
-	owners           map[string]string
+	mu                 sync.RWMutex
+	root               string
+	path               string
+	primaryCodexHome   string
+	accounts           []Account
+	owners             map[string]string
+	preferredAccountID string
 }
 
 func Open(root, primaryCodexHome string) (*Store, error) {
@@ -75,6 +77,7 @@ func Open(root, primaryCodexHome string) (*Store, error) {
 		if persisted.ThreadOwner != nil {
 			store.owners = persisted.ThreadOwner
 		}
+		store.preferredAccountID = persisted.PreferredAccountID
 	case errors.Is(err, os.ErrNotExist):
 		store.accounts = []Account{{
 			ID:         "primary",
@@ -157,6 +160,49 @@ func (s *Store) Controller() (Account, bool) {
 	return s.accounts[0], true
 }
 
+func (s *Store) PreferredAccount() (Account, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.preferredAccountID == "" {
+		return Account{}, false
+	}
+	for _, account := range s.accounts {
+		if account.ID == s.preferredAccountID {
+			return account, true
+		}
+	}
+	return Account{}, false
+}
+
+// SetPreferredAccount selects the subscription used for new threads. An empty
+// ID restores automatic capacity-based routing.
+func (s *Store) SetPreferredAccount(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	id = strings.TrimSpace(id)
+	if id != "" {
+		found := false
+		for _, account := range s.accounts {
+			if account.ID != id {
+				continue
+			}
+			if !account.Enabled {
+				return fmt.Errorf("account %q is disabled", id)
+			}
+			found = true
+			break
+		}
+		if !found {
+			return fmt.Errorf("account %q not found", id)
+		}
+	}
+	if s.preferredAccountID == id {
+		return nil
+	}
+	s.preferredAccountID = id
+	return s.saveLocked()
+}
+
 func (s *Store) AddAccount(label string) (Account, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -210,6 +256,9 @@ func (s *Store) UpdateAccount(id string, label *string, enabled *bool) (Account,
 		}
 		if enabled != nil {
 			s.accounts[index].Enabled = *enabled
+			if !*enabled && s.preferredAccountID == id {
+				s.preferredAccountID = ""
+			}
 		}
 		if err := s.saveLocked(); err != nil {
 			return Account{}, err
@@ -251,9 +300,10 @@ func (s *Store) ThreadCounts() map[string]int {
 
 func (s *Store) saveLocked() error {
 	persisted := persistedState{
-		Version:     stateVersion,
-		Accounts:    s.accounts,
-		ThreadOwner: s.owners,
+		Version:            stateVersion,
+		Accounts:           s.accounts,
+		ThreadOwner:        s.owners,
+		PreferredAccountID: s.preferredAccountID,
 	}
 	data, err := json.MarshalIndent(persisted, "", "  ")
 	if err != nil {

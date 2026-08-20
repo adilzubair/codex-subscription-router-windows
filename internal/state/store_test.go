@@ -172,3 +172,57 @@ func TestUpdateAccountPreservesController(t *testing.T) {
 		t.Fatalf("unexpected updated account: %#v", account)
 	}
 }
+
+func TestPreferredAccountPersistsAndClearsWhenDisabled(t *testing.T) {
+	root := t.TempDir()
+	primaryHome := filepath.Join(root, "primary")
+	store, err := Open(filepath.Join(root, "mux"), primaryHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	work, err := store.AddAccount("Work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetPreferredAccount(work.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := Open(filepath.Join(root, "mux"), primaryHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	preferred, ok := reopened.PreferredAccount()
+	if !ok || preferred.ID != work.ID {
+		t.Fatalf("preferred account was not persisted: account=%#v ok=%v", preferred, ok)
+	}
+
+	disabled := false
+	if _, err := reopened.UpdateAccount(work.ID, nil, &disabled); err != nil {
+		t.Fatal(err)
+	}
+	if preferred, ok := reopened.PreferredAccount(); ok {
+		t.Fatalf("disabled account remained preferred: %#v", preferred)
+	}
+	if err := reopened.SetPreferredAccount(""); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPreferredAccountRejectsUnknownOrDisabledAccount(t *testing.T) {
+	root := t.TempDir()
+	store, err := Open(root, filepath.Join(root, "primary"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetPreferredAccount("missing"); err == nil {
+		t.Fatal("expected an unknown preferred account to be rejected")
+	}
+	disabled := false
+	if _, err := store.UpdateAccount("primary", nil, &disabled); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetPreferredAccount("primary"); err == nil {
+		t.Fatal("expected a disabled preferred account to be rejected")
+	}
+}

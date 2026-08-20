@@ -17,7 +17,7 @@ body {
     #0d0f12;
 }
 
-button, input { font: inherit; }
+button, input, select { font: inherit; }
 button { cursor: pointer; }
 
 .shell { width: min(960px, calc(100% - 40px)); margin: 0 auto; padding: 54px 0 32px; }
@@ -37,6 +37,13 @@ h2 { margin: 0; letter-spacing: -.025em; }
 .summary strong { font-size: 25px; letter-spacing: -.04em; }
 .summary span { color: #8f96a3; font-size: 12px; }
 
+.routing-card { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 340px); align-items: end; gap: 28px; margin: -12px 0 38px; padding: 20px 22px; border: 1px solid #292d34; border-radius: 16px; background: rgba(22, 25, 30, .76); }
+.routing-card h2 { font-size: 19px; }
+.routing-card p:not(.eyebrow) { margin: 7px 0 0; color: #8f96a3; font-size: 13px; line-height: 1.5; }
+.routing-card label { display: grid; gap: 7px; color: #aeb4bf; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.routing-card select { width: 100%; min-height: 42px; padding: 0 38px 0 12px; border: 1px solid #3a404a; border-radius: 10px; background: #171a1f; color: #f3f4f6; font-size: 13px; font-weight: 600; letter-spacing: normal; text-transform: none; }
+.routing-card select:focus { border-color: #6f98f7; outline: 2px solid rgba(91, 139, 250, .24); outline-offset: 1px; }
+
 .toolbar { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 20px; }
 .toolbar p { max-width: 620px; margin: 7px 0 0; color: #8f96a3; font-size: 13px; line-height: 1.5; }
 .primary, .secondary { min-height: 40px; padding: 0 17px; border-radius: 10px; border: 1px solid transparent; font-weight: 650; }
@@ -54,6 +61,7 @@ h2 { margin: 0; letter-spacing: -.025em; }
 .account-name strong { font-size: 16px; }
 .badge { padding: 3px 7px; border: 1px solid #353a43; border-radius: 999px; color: #aeb4bf; font-size: 10px; font-weight: 700; text-transform: uppercase; }
 .badge.primary-badge { border-color: rgba(72, 122, 243, .45); color: #8eb0ff; }
+.badge.selected-badge { border-color: rgba(39, 191, 138, .5); color: #71d7b2; }
 .identity { margin-top: 5px; color: #8f96a3; font-size: 12px; }
 .quota { display: flex; align-items: center; gap: 10px; margin-top: 13px; }
 .track { width: min(280px, 38vw); height: 6px; overflow: hidden; border-radius: 999px; background: #2a2e35; }
@@ -70,6 +78,7 @@ h2 { margin: 0; letter-spacing: -.025em; }
 .empty { padding: 42px; border: 1px dashed #30353e; border-radius: 16px; color: #8f96a3; text-align: center; }
 
 .notice { margin: 0 0 14px; padding: 12px 14px; border: 1px solid #604646; border-radius: 10px; background: rgba(94, 45, 45, .35); color: #ffb3b3; font-size: 13px; }
+.notice.success { border-color: rgba(39, 191, 138, .45); background: rgba(25, 105, 78, .28); color: #93e1c3; }
 .hidden { display: none; }
 footer { display: flex; justify-content: space-between; gap: 20px; margin-top: 22px; color: #747c89; font-size: 12px; }
 .text-button { border: 0; background: transparent; color: #90aff7; }
@@ -87,6 +96,7 @@ dialog::backdrop { background: rgba(3, 5, 8, .72); backdrop-filter: blur(7px); }
 @media (max-width: 680px) {
   .shell { width: min(100% - 24px, 960px); padding-top: 28px; }
   .hero, .toolbar { align-items: stretch; flex-direction: column; }
+  .routing-card { grid-template-columns: 1fr; }
   .summary div { padding: 17px 14px; }
   .account { grid-template-columns: 1fr; }
   .account-actions { justify-content: flex-end; }

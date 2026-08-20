@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/adilzubair/codex-subscription-router-windows/internal/state"
@@ -46,12 +47,14 @@ type AccountSnapshot struct {
 	ProfileImageURL string          `json:"profileImageUrl,omitempty"`
 	RateLimits      *RateLimits     `json:"rateLimits,omitempty"`
 	ThreadCount     int             `json:"threadCount"`
+	Preferred       bool            `json:"preferred"`
 	Error           string          `json:"error,omitempty"`
 	CreatedAt       int64           `json:"createdAt"`
 	RawAccount      json.RawMessage `json:"-"`
 }
 
 type RouteReason struct {
+	Selection            string   `json:"selection,omitempty"`
 	WeeklyUsedPercent    *float64 `json:"weeklyUsedPercent"`
 	WeeklyResetsAt       *int64   `json:"weeklyResetsAt,omitempty"`
 	ShortUsedPercent     *float64 `json:"shortUsedPercent"`
@@ -59,6 +62,22 @@ type RouteReason struct {
 	ResetCreditExpiresAt *int64   `json:"resetCreditExpiresAt,omitempty"`
 	UrgencyScore         *float64 `json:"urgencyScore,omitempty"`
 	ThreadCount          int      `json:"threadCount"`
+}
+
+type RoutingPreference struct {
+	Mode      string `json:"mode"`
+	AccountID string `json:"accountId,omitempty"`
+	Label     string `json:"label,omitempty"`
+}
+
+type routingCandidate struct {
+	account      state.Account
+	reason       RouteReason
+	weekly       *RateLimitWindow
+	weeklyUsed   float64
+	shortUsed    float64
+	resetCredits resetCreditMetadata
+	urgency      float64
 }
 
 func (m *Multiplexer) Accounts(ctx context.Context) []AccountSnapshot {
@@ -72,9 +91,11 @@ func (m *Multiplexer) accountSnapshots(ctx context.Context, includeProfile bool)
 		go func(account state.Account) {
 			snapshot, err := m.accountSnapshotWithProfile(ctx, account.ID, includeProfile)
 			if err != nil {
+				preferred, selected := m.store.PreferredAccount()
 				snapshot = AccountSnapshot{
 					ID: account.ID, Label: account.Label, Enabled: account.Enabled,
 					Controller: account.Controller, CreatedAt: account.CreatedAt, Error: err.Error(),
+					Preferred: selected && preferred.ID == account.ID,
 				}
 			}
 			results <- snapshot
@@ -110,10 +131,45 @@ func (m *Multiplexer) AddAccount(ctx context.Context, label string) (AccountSnap
 }
 
 func (m *Multiplexer) UpdateAccount(ctx context.Context, id string, label *string, enabled *bool) (AccountSnapshot, error) {
+	before := m.RoutingPreference()
 	if _, err := m.store.UpdateAccount(id, label, enabled); err != nil {
 		return AccountSnapshot{}, err
 	}
+	after := m.RoutingPreference()
+	if before.Mode != after.Mode || before.AccountID != after.AccountID {
+		m.publish(Event{Type: "routing-updated", AccountID: after.AccountID, Data: after})
+	}
 	return m.accountSnapshot(ctx, id)
+}
+
+func (m *Multiplexer) RoutingPreference() RoutingPreference {
+	account, ok := m.store.PreferredAccount()
+	if !ok {
+		return RoutingPreference{Mode: "automatic"}
+	}
+	return RoutingPreference{Mode: "manual", AccountID: account.ID, Label: account.Label}
+}
+
+func (m *Multiplexer) SetRoutingPreference(ctx context.Context, accountID string) (RoutingPreference, error) {
+	accountID = strings.TrimSpace(accountID)
+	if accountID != "" {
+		snapshot, err := m.accountSnapshotWithProfile(ctx, accountID, false)
+		if err != nil {
+			return RoutingPreference{}, err
+		}
+		if !snapshot.Enabled {
+			return RoutingPreference{}, fmt.Errorf("account %q is disabled", accountID)
+		}
+		if !snapshot.Connected || snapshot.AuthType != "chatgpt" {
+			return RoutingPreference{}, fmt.Errorf("account %q is not connected to a ChatGPT subscription", accountID)
+		}
+	}
+	if err := m.store.SetPreferredAccount(accountID); err != nil {
+		return RoutingPreference{}, err
+	}
+	preference := m.RoutingPreference()
+	m.publish(Event{Type: "routing-updated", AccountID: preference.AccountID, Data: preference})
+	return preference, nil
 }
 
 func (m *Multiplexer) ThreadAccount(ctx context.Context, threadID string) (AccountSnapshot, error) {
@@ -146,7 +202,17 @@ func (m *Multiplexer) Logout(ctx context.Context, id string) error {
 		return fmt.Errorf("account %q is unavailable", id)
 	}
 	_, err := child.Request(ctx, "account/logout", nil)
-	return err
+	if err != nil {
+		return err
+	}
+	if preferred, ok := m.store.PreferredAccount(); ok && preferred.ID == id {
+		if err := m.store.SetPreferredAccount(""); err != nil {
+			return err
+		}
+		preference := m.RoutingPreference()
+		m.publish(Event{Type: "routing-updated", Data: preference})
+	}
+	return nil
 }
 
 func (m *Multiplexer) accountSnapshot(ctx context.Context, accountID string) (AccountSnapshot, error) {
@@ -178,6 +244,9 @@ func (m *Multiplexer) accountSnapshotWithProfile(ctx context.Context, accountID 
 		Controller: account.Controller, Connected: string(accountResult.Account) != "null" && len(accountResult.Account) > 0,
 		CreatedAt: account.CreatedAt, RawAccount: accountResult.Account,
 		ThreadCount: m.store.ThreadCounts()[account.ID],
+	}
+	if preferred, ok := m.store.PreferredAccount(); ok {
+		snapshot.Preferred = preferred.ID == account.ID
 	}
 	if snapshot.Connected {
 		var details struct {
@@ -240,16 +309,7 @@ func (m *Multiplexer) chooseAccount(ctx context.Context) (state.Account, RouteRe
 
 func (m *Multiplexer) chooseAccountExcluding(ctx context.Context, excluded map[string]struct{}) (state.Account, RouteReason, error) {
 	snapshots := m.accountSnapshots(ctx, false)
-	type candidate struct {
-		account      state.Account
-		reason       RouteReason
-		weekly       *RateLimitWindow
-		weeklyUsed   float64
-		shortUsed    float64
-		resetCredits resetCreditMetadata
-		urgency      float64
-	}
-	candidates := make([]candidate, 0, len(snapshots))
+	candidates := make([]routingCandidate, 0, len(snapshots))
 	for _, snapshot := range snapshots {
 		if _, skip := excluded[snapshot.ID]; skip {
 			continue
@@ -280,13 +340,20 @@ func (m *Multiplexer) chooseAccountExcluding(ctx context.Context, excluded map[s
 			shortUsed = short.UsedPercent
 			reason.ShortUsedPercent = &short.UsedPercent
 		}
-		candidates = append(candidates, candidate{
+		candidates = append(candidates, routingCandidate{
 			account: account, reason: reason, weekly: weekly,
 			weeklyUsed: weeklyUsed, shortUsed: shortUsed,
 		})
 	}
 	if len(candidates) == 0 {
 		return state.Account{}, RouteReason{}, errNoSubscriptionCapacity
+	}
+	preferred, manuallySelected := m.store.PreferredAccount()
+	if manuallySelected {
+		if entry, ok := preferredRoutingCandidate(preferred.ID, candidates); ok {
+			entry.reason.Selection = "manual"
+			return entry.account, entry.reason, nil
+		}
 	}
 
 	type resetResult struct {
@@ -344,7 +411,21 @@ collectResetCredits:
 		}
 		return left.account.CreatedAt < right.account.CreatedAt
 	})
+	if manuallySelected {
+		candidates[0].reason.Selection = "automatic-fallback"
+	} else {
+		candidates[0].reason.Selection = "automatic"
+	}
 	return candidates[0].account, candidates[0].reason, nil
+}
+
+func preferredRoutingCandidate(accountID string, candidates []routingCandidate) (routingCandidate, bool) {
+	for _, candidate := range candidates {
+		if candidate.account.ID == accountID {
+			return candidate, true
+		}
+	}
+	return routingCandidate{}, false
 }
 
 func routeUrgencyScore(now time.Time, weekly *RateLimitWindow, credits resetCreditMetadata) float64 {

@@ -20,6 +20,9 @@ func TestManagerPageIsEmbeddedWithStrictCSP(t *testing.T) {
 	if !strings.Contains(response.Body.String(), "Subscription Router") {
 		t.Fatal("manager page is missing its heading")
 	}
+	if !strings.Contains(response.Body.String(), `id="routing-account"`) {
+		t.Fatal("manager page is missing the manual routing selector")
+	}
 	csp := response.Header().Get("Content-Security-Policy")
 	if !strings.Contains(csp, "default-src 'none'") || !strings.Contains(csp, "connect-src 'self'") {
 		t.Fatalf("manager CSP is not restrictive enough: %q", csp)

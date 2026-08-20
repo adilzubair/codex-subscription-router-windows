@@ -1,7 +1,7 @@
 {
   "name": "codex-subscription-router-windows",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "One-click Windows launcher for routing the Codex desktop app across multiple subscriptions",
   "license": "MIT",
   "repository": {

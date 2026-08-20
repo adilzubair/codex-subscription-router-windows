@@ -1,9 +1,49 @@
 package mux
 
 import (
+	"io"
+	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/adilzubair/codex-subscription-router-windows/internal/state"
 )
+
+func TestRoutingPreferenceReportsAutomaticAndManualModes(t *testing.T) {
+	root := t.TempDir()
+	store, err := state.Open(filepath.Join(root, "mux"), filepath.Join(root, "primary"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	multiplexer, err := New(Options{RealExecutable: "unused", Store: store, Output: io.Discard})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preference := multiplexer.RoutingPreference(); preference.Mode != "automatic" || preference.AccountID != "" {
+		t.Fatalf("unexpected automatic preference: %#v", preference)
+	}
+	if err := store.SetPreferredAccount("primary"); err != nil {
+		t.Fatal(err)
+	}
+	preference := multiplexer.RoutingPreference()
+	if preference.Mode != "manual" || preference.AccountID != "primary" || preference.Label != "Primary" {
+		t.Fatalf("unexpected manual preference: %#v", preference)
+	}
+}
+
+func TestPreferredRoutingCandidateSelectsRequestedAccount(t *testing.T) {
+	candidates := []routingCandidate{
+		{account: state.Account{ID: "primary"}},
+		{account: state.Account{ID: "work"}},
+	}
+	selected, ok := preferredRoutingCandidate("work", candidates)
+	if !ok || selected.account.ID != "work" {
+		t.Fatalf("manual routing did not select the requested account: selected=%#v ok=%v", selected, ok)
+	}
+	if _, ok := preferredRoutingCandidate("missing", candidates); ok {
+		t.Fatal("manual routing selected an unavailable account")
+	}
+}
 
 func TestPlanLabel(t *testing.T) {
 	tests := map[string]string{

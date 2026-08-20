@@ -1,6 +1,6 @@
 # Codex Subscription Router for Windows
 
-Use multiple Codex subscriptions from one isolated Windows desktop app. New threads are routed to an enabled subscription with available capacity, while existing threads remain attached to the subscription that owns them.
+Use multiple Codex subscriptions from one isolated Windows desktop app. Route new chats automatically by capacity or manually select the subscription you want, while existing chats remain attached to the subscription that owns them.
 
 This is an independent, source-only project. It does not distribute the ChatGPT/Codex desktop app, OpenAI binaries, or your credentials.
 
@@ -35,7 +35,11 @@ winget install --id 9PLM9XGG6VKS -s msstore
 
 For rename, enable/disable, logout, and detailed quota controls, open **Subscription Manager** from the Start Menu folder.
 
-You do not normally switch subscriptions by hand. The router selects an eligible account for each new thread and keeps that thread sticky to its owner. Disabling an account prevents new work from being assigned to it.
+## Switch subscriptions manually
+
+Open the native profile menu and choose either **Automatic routing** or a connected subscription. You can make the same selection from the **Active subscription** control in Subscription Manager.
+
+The selection applies to new chats. Existing chats remain with their current subscription so conversation history stays intact. If the manually selected subscription is unavailable or out of capacity, the router safely falls back to another enabled subscription. Choosing Automatic restores capacity-based balancing.
 
 ## Update, recover, or uninstall
 

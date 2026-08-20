@@ -23,10 +23,24 @@
         <div><strong id="thread-count">—</strong><span>Assigned threads</span></div>
       </section>
 
+      <section class="routing-card" aria-labelledby="routing-heading">
+        <div>
+          <p class="eyebrow">New chat routing</p>
+          <h2 id="routing-heading">Active subscription</h2>
+          <p id="routing-status">Loading routing preference…</p>
+        </div>
+        <label>
+          <span>Route new chats with</span>
+          <select id="routing-account" aria-describedby="routing-status">
+            <option value="">Automatic (recommended)</option>
+          </select>
+        </label>
+      </section>
+
       <section class="toolbar">
         <div>
           <h2>Subscriptions</h2>
-          <p>New threads use an enabled account with available capacity. Existing threads stay with their owner.</p>
+          <p>Your selection applies to new chats. Existing chats stay with their owner, and unavailable subscriptions safely fall back to automatic routing.</p>
         </div>
         <button class="primary" id="add-account">Add subscription</button>
       </section>

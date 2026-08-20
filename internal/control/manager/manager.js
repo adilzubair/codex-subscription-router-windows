@@ -1,6 +1,7 @@
 const state = {
   token: "",
   accounts: [],
+  routing: { mode: "automatic", accountId: "" },
   loginAccountId: null,
   verificationUrl: "",
   userCode: "",
@@ -14,6 +15,8 @@ const elements = {
   connected: document.querySelector("#connected-count"),
   enabled: document.querySelector("#enabled-count"),
   threads: document.querySelector("#thread-count"),
+  routingAccount: document.querySelector("#routing-account"),
+  routingStatus: document.querySelector("#routing-status"),
   notice: document.querySelector("#notice"),
   dialog: document.querySelector("#login-dialog"),
   deviceCode: document.querySelector("#device-code"),
@@ -84,6 +87,7 @@ function renderAccount(account) {
   const name = element("div", "account-name");
   name.append(element("strong", "", account.label));
   if (account.controller) name.append(element("span", "badge primary-badge", "Primary"));
+  if (state.routing.accountId === account.id) name.append(element("span", "badge selected-badge", "Selected"));
   if (account.planLabel || account.planType) name.append(element("span", "badge", account.planLabel || account.planType));
   details.append(name);
   details.append(element("div", "identity", maskEmail(account.email)));
@@ -130,6 +134,27 @@ function render() {
   elements.connected.textContent = state.accounts.filter((account) => account.connected).length;
   elements.enabled.textContent = state.accounts.filter((account) => account.enabled).length;
   elements.threads.textContent = state.accounts.reduce((sum, account) => sum + (account.threadCount || 0), 0);
+  renderRouting();
+}
+
+function renderRouting() {
+  const selectedId = state.routing?.mode === "manual" ? state.routing.accountId || "" : "";
+  elements.routingAccount.replaceChildren(new Option("Automatic (recommended)", ""));
+  state.accounts.forEach((account) => {
+    const eligible = account.connected && account.enabled;
+    const suffix = eligible ? "" : " (unavailable)";
+    const option = new Option(`${account.label}${account.planLabel ? ` · ${account.planLabel}` : ""}${suffix}`, account.id);
+    option.disabled = !eligible;
+    elements.routingAccount.append(option);
+  });
+  elements.routingAccount.value = selectedId;
+  if (selectedId) {
+    const selected = state.accounts.find((account) => account.id === selectedId);
+    const label = selected?.label || state.routing.label || "the selected subscription";
+    elements.routingStatus.textContent = `New chats prefer ${label}. If it is unavailable or out of capacity, the router falls back automatically.`;
+  } else {
+    elements.routingStatus.textContent = "New chats are balanced automatically using capacity, reset timing, and current load.";
+  }
 }
 
 function setConnection(mode, text) {
@@ -137,9 +162,10 @@ function setConnection(mode, text) {
   elements.connection.lastChild.textContent = ` ${text}`;
 }
 
-function showNotice(message) {
+function showNotice(message, mode = "error") {
   elements.notice.textContent = message;
   elements.notice.classList.toggle("hidden", !message);
+  elements.notice.classList.toggle("success", Boolean(message) && mode === "success");
 }
 
 async function refresh({ quiet = false } = {}) {
@@ -151,6 +177,7 @@ async function refresh({ quiet = false } = {}) {
   try {
     const payload = await api("/v1/accounts");
     state.accounts = payload.accounts || [];
+    state.routing = payload.routing || { mode: "automatic", accountId: "" };
     render();
     setConnection("online", "Router online");
     if (!quiet) showNotice("");
@@ -220,6 +247,27 @@ async function updateAccount(id, input) {
   }
 }
 
+async function updateRouting(accountId) {
+  const previous = state.routing;
+  elements.routingAccount.disabled = true;
+  try {
+    const payload = await api("/v1/routing", {
+      method: "PATCH",
+      body: JSON.stringify({ accountId }),
+    });
+    state.routing = payload.routing || { mode: "automatic", accountId: "" };
+    await refresh({ quiet: true });
+    const selected = state.routing.mode === "manual" ? state.routing.label : "Automatic routing";
+    showNotice(`${selected} will be used for new chats.`, "success");
+  } catch (error) {
+    state.routing = previous;
+    renderRouting();
+    showNotice(error.message);
+  } finally {
+    elements.routingAccount.disabled = false;
+  }
+}
+
 async function renameAccount(account) {
   const label = window.prompt("Subscription label", account.label);
   if (label == null || !label.trim() || label.trim() === account.label) return;
@@ -234,6 +282,7 @@ async function copyCode() {
 
 elements.add.addEventListener("click", addAccount);
 elements.refresh.addEventListener("click", () => refresh());
+elements.routingAccount.addEventListener("change", (event) => updateRouting(event.target.value));
 elements.deviceCode.addEventListener("click", copyCode);
 elements.copyCode.addEventListener("click", copyCode);
 elements.openVerification.addEventListener("click", () => {
